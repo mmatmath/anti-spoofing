@@ -164,11 +164,6 @@ class WandBWriter:
         scalars: dict,
         step: int,
     ):
-        """
-        Log metrics calculated over the whole epoch.
-
-        The x-axis for these metrics is the epoch number.
-        """
         self.run.log(
             {
                 "epoch": epoch,

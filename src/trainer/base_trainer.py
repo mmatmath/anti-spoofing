@@ -243,19 +243,9 @@ class BaseTrainer:
 
         # Run dev/eval
         for part, dataloader in self.evaluation_dataloaders.items():
-            part_logs = self._evaluation_epoch(
-                epoch,
-                part,
-                dataloader,
-            )
-            logs.update(
-                **{
-                    f"{part}_{name}": value
-                    for name, value in part_logs.items()
-                }
-            )
+            val_logs = self._evaluation_epoch(epoch, part, dataloader)
+            logs.update(**{f"{part}_{name}": value for name, value in val_logs.items()})
 
-        # Log values calculated over the whole epoch
         if self.writer is not None and hasattr(self.writer, "add_epoch_scalars"):
             epoch_scalars = {
                 "train_loss/epoch": logs["loss"],
@@ -539,7 +529,11 @@ class BaseTrainer:
         """
         resume_path = str(resume_path)
         self.logger.info(f"Loading checkpoint: {resume_path} ...")
-        checkpoint = torch.load(resume_path, self.device)
+        checkpoint = torch.load(
+            resume_path,
+            map_location=self.device,
+            weights_only=False,
+        )
         self.start_epoch = checkpoint["epoch"] + 1
         self.mnt_best = checkpoint["monitor_best"]
 
@@ -585,7 +579,11 @@ class BaseTrainer:
             self.logger.info(f"Loading model weights from: {pretrained_path} ...")
         else:
             print(f"Loading model weights from: {pretrained_path} ...")
-        checkpoint = torch.load(pretrained_path, self.device)
+        checkpoint = torch.load(
+            pretrained_path,
+            map_location=self.device,
+            weights_only=False,
+        )
 
         if checkpoint.get("state_dict") is not None:
             self.model.load_state_dict(checkpoint["state_dict"])

@@ -19,9 +19,6 @@ class FFTLCNNTransform(nn.Module):
         self.hop_length = hop_length
         self.num_frames = num_frames
         self.eps = eps
-        self.target_length = (
-            n_fft + (num_frames - 1) * hop_length
-        )
 
         self.register_buffer(
             "window",
@@ -32,13 +29,13 @@ class FFTLCNNTransform(nn.Module):
         self,
         waveform: torch.Tensor,
     ) -> torch.Tensor:
-        waveform = waveform[: self.target_length]
-        if waveform.shape[0] < self.target_length:
+        waveform = waveform.reshape(-1)
+        if waveform.shape[-1] < self.win_length:
             waveform = F.pad(
                 waveform,
                 (
                     0,
-                    self.target_length - waveform.shape[0],
+                    self.win_length - waveform.shape[-1],
                 ),
             )
 
@@ -54,4 +51,15 @@ class FFTLCNNTransform(nn.Module):
             return_complex=True,
         )
         log_power_spectrum = torch.log(spectrum.abs().square().clamp_min(self.eps))
+
+        log_power_spectrum = log_power_spectrum[..., : self.num_frames]
+        if log_power_spectrum.shape[-1] < self.num_frames:
+            log_power_spectrum = F.pad(
+                log_power_spectrum,
+                (
+                    0,
+                    self.num_frames - log_power_spectrum.shape[-1],
+                ),
+            )
+
         return log_power_spectrum.unsqueeze(0)
