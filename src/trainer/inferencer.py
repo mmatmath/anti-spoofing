@@ -1,3 +1,5 @@
+import csv
+
 import torch
 from tqdm.auto import tqdm
 
@@ -21,7 +23,7 @@ class Inferencer(BaseTrainer):
         device,
         dataloaders,
         save_path,
-        metrics=None,
+        metrics,
         batch_transforms=None,
         skip_model_load=False,
     ):
@@ -68,13 +70,12 @@ class Inferencer(BaseTrainer):
 
         # define metrics
         self.metrics = metrics
-        if self.metrics is not None:
-            self.evaluation_metrics = MetricTracker(
-                *[m.name for m in self.metrics["inference"]],
-                writer=None,
-            )
-        else:
-            self.evaluation_metrics = None
+        self.evaluation_metric = self.metrics["inference"][0]
+        self.evaluation_metrics = MetricTracker(
+            self.evaluation_metric.name,
+            writer=None,
+        )
+        self.predictions = []
 
         if not skip_model_load:
             # init model
@@ -94,23 +95,14 @@ class Inferencer(BaseTrainer):
             part_logs[part] = logs
         return part_logs
 
-    def process_batch(self, batch_idx, batch, metrics, part):
+    def process_batch(self, batch):
         """
         Run batch through the model, compute metrics, and
-        save predictions to disk.
-
-        Save directory is defined by save_path in the inference
-        config and current partition.
+        accumulate predictions for the submission file.
 
         Args:
-            batch_idx (int): the index of the current batch.
             batch (dict): dict-based batch containing the data from
                 the dataloader.
-            metrics (MetricTracker): MetricTracker object that computes
-                and aggregates the metrics. The metrics depend on the type
-                of the partition (train or inference).
-            part (str): name of the partition. Used to define proper saving
-                directory.
         Returns:
             batch (dict): dict-based batch containing the data from
                 the dataloader (possibly transformed via batch transform)
@@ -122,33 +114,10 @@ class Inferencer(BaseTrainer):
         outputs = self.model(**batch)
         batch.update(outputs)
 
-        if metrics is not None:
-            for met in self.metrics["inference"]:
-                metrics.update(met.name, met(**batch))
+        self.evaluation_metric.update(**batch)
 
-        # Some saving logic. This is an example
-        # Use if you need to save predictions on disk
-
-        batch_size = batch["logits"].shape[0]
-        current_id = batch_idx * batch_size
-
-        for i in range(batch_size):
-            # clone because of
-            # https://github.com/pytorch/pytorch/issues/1995
-            logits = batch["logits"][i].clone()
-            label = batch["labels"][i].clone()
-            pred_label = logits.argmax(dim=-1)
-
-            output_id = current_id + i
-
-            output = {
-                "pred_label": pred_label,
-                "label": label,
-            }
-
-            if self.save_path is not None:
-                # you can use safetensors or other lib here
-                torch.save(output, self.save_path / part / f"output_{output_id}.pth")
+        scores = torch.softmax(batch["logits"].detach(), dim=-1)[:, 1]
+        self.predictions.extend(zip(batch["key"], scores.cpu().tolist()))
 
         return batch
 
@@ -167,22 +136,29 @@ class Inferencer(BaseTrainer):
         self.model.eval()
 
         self.evaluation_metrics.reset()
+        self.evaluation_metric.reset()
+        self.predictions = []
 
-        # create Save dir
-        if self.save_path is not None:
-            (self.save_path / part).mkdir(exist_ok=True, parents=True)
+        self.save_path.mkdir(exist_ok=True, parents=True)
 
         with torch.no_grad():
-            for batch_idx, batch in tqdm(
-                enumerate(dataloader),
+            for batch in tqdm(
+                dataloader,
                 desc=part,
                 total=len(dataloader),
             ):
-                batch = self.process_batch(
-                    batch_idx=batch_idx,
-                    batch=batch,
-                    part=part,
-                    metrics=self.evaluation_metrics,
-                )
+                self.process_batch(batch)
+
+        self.evaluation_metrics.update(
+            self.evaluation_metric.name,
+            self.evaluation_metric.compute(),
+        )
+
+        prediction_path = (
+            self.save_path / self.config.inferencer.prediction_filename
+        )
+        with prediction_path.open("w", newline="", encoding="utf-8") as file:
+            csv.writer(file).writerows(self.predictions)
+        print(f"Predictions saved to {prediction_path}")
 
         return self.evaluation_metrics.result()

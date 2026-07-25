@@ -117,15 +117,15 @@ class BaseTrainer:
 
         # define metrics
         self.metrics = metrics
+        self.evaluation_metric = self.metrics["inference"][0]
         self.train_metrics = MetricTracker(
             *self.config.writer.loss_names,
             "grad_norm",
-            *[m.name for m in self.metrics["train"]],
             writer=self.writer,
         )
         self.evaluation_metrics = MetricTracker(
             *self.config.writer.loss_names,
-            *[m.name for m in self.metrics["inference"]],
+            self.evaluation_metric.name,
             writer=self.writer,
         )
 
@@ -233,19 +233,51 @@ class BaseTrainer:
                 )
                 self._log_scalars(self.train_metrics)
                 self._log_batch(batch_idx, batch)
-                # we don't want to reset train metrics at the start of every epoch
-                # because we are interested in recent train metrics
-                last_train_metrics = self.train_metrics.result()
-                self.train_metrics.reset()
             if batch_idx + 1 >= self.epoch_len:
                 break
 
-        logs = last_train_metrics
+        logs = self.train_metrics.result()
 
-        # Run val/test
+        if self.lr_scheduler is not None:
+            self.lr_scheduler.step()
+
+        # Run dev/eval
         for part, dataloader in self.evaluation_dataloaders.items():
-            val_logs = self._evaluation_epoch(epoch, part, dataloader)
-            logs.update(**{f"{part}_{name}": value for name, value in val_logs.items()})
+            part_logs = self._evaluation_epoch(
+                epoch,
+                part,
+                dataloader,
+            )
+            logs.update(
+                **{
+                    f"{part}_{name}": value
+                    for name, value in part_logs.items()
+                }
+            )
+
+        # Log values calculated over the whole epoch
+        if self.writer is not None and hasattr(self.writer, "add_epoch_scalars"):
+            epoch_scalars = {
+                "train_loss/epoch": logs["loss"],
+            }
+
+            if "dev_loss" in logs:
+                epoch_scalars["dev_loss/epoch"] = logs["dev_loss"]
+
+            if "dev_EER" in logs:
+                epoch_scalars["dev_eer/epoch"] = logs["dev_EER"]
+
+            if "eval_loss" in logs:
+                epoch_scalars["eval_loss/epoch"] = logs["eval_loss"]
+
+            if "eval_EER" in logs:
+                epoch_scalars["eval_eer/epoch"] = logs["eval_EER"]
+
+            self.writer.add_epoch_scalars(
+                epoch=epoch,
+                scalars=epoch_scalars,
+                step=epoch * self.epoch_len,
+            )
 
         return logs
 
@@ -263,6 +295,8 @@ class BaseTrainer:
         self.is_train = False
         self.model.eval()
         self.evaluation_metrics.reset()
+        self.evaluation_metric.reset()
+
         with torch.no_grad():
             for batch_idx, batch in tqdm(
                 enumerate(dataloader),
@@ -273,6 +307,12 @@ class BaseTrainer:
                     batch,
                     metrics=self.evaluation_metrics,
                 )
+
+            self.evaluation_metrics.update(
+                self.evaluation_metric.name,
+                self.evaluation_metric.compute(),
+            )
+
             self.writer.set_step(epoch * self.epoch_len, part)
             self._log_scalars(self.evaluation_metrics)
             self._log_batch(

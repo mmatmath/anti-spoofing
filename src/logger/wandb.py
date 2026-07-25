@@ -44,7 +44,7 @@ class WandBWriter:
 
             self.run_id = run_id
 
-            wandb.init(
+            self.run = wandb.init(
                 project=project_name,
                 entity=entity,
                 config=project_config,
@@ -55,6 +55,20 @@ class WandBWriter:
                 save_code=kwargs.get("save_code", False),
             )
             self.wandb = wandb
+
+            self.run.define_metric("epoch")
+
+            for metric_name in (
+                "train_loss/epoch",
+                "dev_loss/epoch",
+                "dev_eer/epoch",
+                "eval_loss/epoch",
+                "eval_eer/epoch",
+            ):
+                self.run.define_metric(
+                    metric_name,
+                    step_metric="epoch",
+                )
 
         except ImportError:
             logger.warning("For use wandb install it via \n\t pip install wandb")
@@ -142,6 +156,29 @@ class WandBWriter:
                 for scalar_name, scalar in scalars.items()
             },
             step=self.step,
+        )
+
+    def add_epoch_scalars(
+        self,
+        epoch: int,
+        scalars: dict,
+        step: int,
+    ):
+        """
+        Log metrics calculated over the whole epoch.
+
+        The x-axis for these metrics is the epoch number.
+        """
+        self.run.log(
+            {
+                "epoch": epoch,
+                **{
+                    name: float(value)
+                    for name, value in scalars.items()
+                },
+            },
+            step=step,
+            commit=False,
         )
 
     def add_image(self, image_name, image):

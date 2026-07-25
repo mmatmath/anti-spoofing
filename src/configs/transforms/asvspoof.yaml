@@ -1,0 +1,22 @@
+instance_transforms:
+  train:
+    data_object:
+      _target_: src.transforms.FFTLCNNTransform
+      n_fft: 1724
+      win_length: 1724
+      hop_length: 130
+      num_frames: 600
+      eps: 1e-8
+
+  inference:
+    data_object:
+      _target_: src.transforms.FFTLCNNTransform
+      n_fft: 1724
+      win_length: 1724
+      hop_length: 130
+      num_frames: 600
+      eps: 1e-8
+
+batch_transforms:
+  train: null
+  inference: null
