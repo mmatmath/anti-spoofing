@@ -10,5 +10,5 @@ inferencer:
   device: auto # device name or "auto"
   save_path: "asvspoof_eval" # any name here, can be a dataset name
   prediction_filename: "mmmaevskiy.csv"
-  seed: 1
+  seed: 10
   from_pretrained: "saved/lcnn_cross_entropy_eer/model_best.pth"

@@ -158,13 +158,8 @@ class WandBWriter:
             step=self.step,
         )
 
-    def add_epoch_scalars(
-        self,
-        epoch: int,
-        scalars: dict,
-        step: int,
-    ):
-        self.run.log(
+    def add_epoch_scalars(self, epoch, scalars, step):
+        self.wandb.log(
             {
                 "epoch": epoch,
                 **{

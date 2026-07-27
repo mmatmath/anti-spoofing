@@ -36,4 +36,4 @@ trainer:
   save_period: 10
   early_stop: ${trainer.n_epochs}
   save_dir: "saved"
-  seed: 9
+  seed: 10
