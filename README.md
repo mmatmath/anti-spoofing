@@ -20,7 +20,7 @@ ASVspoof 2019 LA:
 | Количество записей | 71 237 |
 | EER | **4.63%** |
 
-[Логи обучения в Weights & Biases](https://wandb.ai/matmath-work-hse-university/anti-spoofing/runs/3sm9phah?nw=nwusermatmathwork).
+[Отчёт с результатами и графиками в Weights & Biases](https://api.wandb.ai/links/matmath-work-hse-university/99fuxaw2).
 
 ## Метод
 
